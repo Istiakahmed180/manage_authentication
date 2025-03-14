@@ -50,11 +50,6 @@ class AuthController extends GetxController {
   void onInit() {
     super.onInit();
     _authStateWorker = ever(_tokenService.isLoggedIn, (isLoggedIn) {
-      if (isLoggedIn) {
-        Get.offAllNamed('/home');
-      } else {
-        Get.offAllNamed('/login');
-      }
     });
   }
 
