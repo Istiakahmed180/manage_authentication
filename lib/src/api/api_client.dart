@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart' as dio;
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:manage_authentication/src/services/token_service.dart';
 
@@ -16,6 +17,12 @@ class ApiClient extends GetxService {
     _dio.options.receiveTimeout = const Duration(seconds: 10);
     _dio.options.contentType = 'application/json';
     _setupInterceptors();
+  }
+
+  void _log(String message) {
+    if (kDebugMode) {
+      debugPrint(message);
+    }
   }
 
   void _setupInterceptors() {
@@ -36,7 +43,7 @@ class ApiClient extends GetxService {
                 return handler.resolve(await _retry(error.requestOptions));
               }
             } catch (e) {
-              print('Token refresh failed: $e');
+              _log('❌ Token refresh failed: $e');
               await _tokenService.clearTokens();
             }
           }
@@ -47,32 +54,53 @@ class ApiClient extends GetxService {
   }
 
   Future<bool> _refreshToken() async {
+    String url = '${_dio.options.baseUrl}/auth/refresh';
+    String? refreshToken = _tokenService.refreshToken.value;
+
+    _log('🔄 Refreshing Token...');
+    _log('📤 POST Request URL: $url');
+    _log('🔑 Refresh Token: ${refreshToken ?? "No Token"}');
+
+    if (refreshToken == null) {
+      _log('❌ No refresh token available.');
+      return false;
+    }
+
     try {
-      String? refreshToken = _tokenService.refreshToken.value;
-      if (refreshToken == null) return false;
       final response = await dio.Dio().post(
-        '$baseUrl/auth/refresh',
+        url,
         data: {'refreshToken': refreshToken},
       );
+
+      _log('✅ POST Status Code: ${response.statusCode}');
+      _log('✅ POST Response: ${response.data}');
+
       if (response.statusCode == 200) {
         String newAccessToken = response.data['accessToken'];
         String newRefreshToken = response.data['refreshToken'];
         DateTime expiryTime = DateTime.now().add(const Duration(hours: 1));
+
         await _tokenService.saveAllTokenInfo(
           newAccessToken,
           newRefreshToken,
           expiryTime,
         );
+
+        _log('🔑 Token Refreshed Successfully');
         return true;
       }
+
+      _log('❌ Failed to refresh token.');
       return false;
     } catch (e) {
-      print('Refresh token error: $e');
+      _log('❌ Refresh token error: $e');
       return false;
     }
   }
 
-  Future<dio.Response<dynamic>> _retry(dio.RequestOptions requestOptions) async {
+  Future<dio.Response<dynamic>> _retry(
+    dio.RequestOptions requestOptions,
+  ) async {
     final options = dio.Options(
       method: requestOptions.method,
       headers: requestOptions.headers,
@@ -88,25 +116,39 @@ class ApiClient extends GetxService {
   }
 
   Future<bool> login(String username, String password) async {
+    String url = '${_dio.options.baseUrl}/auth/login';
+
+    _log('📤 POST Request URL: $url');
+    _log(
+      '📦 POST Request Body: {"username": $username, "password": $password}',
+    );
+
     try {
       final response = await _dio.post(
         '/auth/login',
         data: {'username': username, 'password': password},
       );
+
+      _log('✅ POST Status Code: ${response.statusCode}');
+      _log('✅ POST Response: ${response.data}');
+
       if (response.statusCode == 200) {
         String accessToken = response.data['accessToken'];
         String refreshToken = response.data['refreshToken'];
         DateTime expiryTime = DateTime.now().add(const Duration(hours: 1));
+
         await _tokenService.saveAllTokenInfo(
           accessToken,
           refreshToken,
           expiryTime,
         );
+
+        _log('🔑 Token Saved Successfully');
         return true;
       }
       return false;
     } catch (e) {
-      print('Login error: $e');
+      _log('❌ Login Error: $e');
       return false;
     }
   }
@@ -116,16 +158,48 @@ class ApiClient extends GetxService {
       await _tokenService.clearTokens();
       return true;
     } catch (e) {
-      print('Logout error: $e');
+      _log('❌ Logout error: $e');
       return false;
     }
   }
 
   Future<dio.Response> getData(String endpoint) async {
-    return await _dio.get(endpoint);
+    String url = '${_dio.options.baseUrl}$endpoint';
+    String? token = _tokenService.accessToken.value;
+
+    _log('📥 GET Request URL: $url');
+    _log('🔑 GET Request Token: ${token ?? "No Token"}');
+
+    try {
+      final response = await _dio.get(endpoint);
+      _log('✅ GET Status Code: ${response.statusCode}');
+      _log('✅ GET Response: ${response.data}');
+      return response;
+    } catch (e) {
+      _log('❌ GET Request Error: $e');
+      rethrow;
+    }
   }
 
-  Future<dio.Response> postData(String endpoint, Map<String, dynamic> data) async {
-    return await _dio.post(endpoint, data: data);
+  Future<dio.Response> postData(
+    String endpoint,
+    Map<String, dynamic> requestBody,
+  ) async {
+    String url = '${_dio.options.baseUrl}$endpoint';
+    String? token = _tokenService.accessToken.value;
+
+    _log('📤 POST Request URL: $url');
+    _log('🔑 POST Request Token: ${token ?? "No Token"}');
+    _log('📦 POST Request Body: $requestBody');
+
+    try {
+      final response = await _dio.post(endpoint, data: requestBody);
+      _log('✅ POST Status Code: ${response.statusCode}');
+      _log('✅ POST Response: ${response.data}');
+      return response;
+    } catch (e) {
+      _log('❌ POST Request Error: $e');
+      rethrow;
+    }
   }
 }
